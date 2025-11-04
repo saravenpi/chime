@@ -74,9 +74,17 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if selectedItem.title == "💬 Conversations" {
 				conversationsModel := NewConversationsModel()
+				if m.windowWidth > 0 {
+					updatedModel, _ := conversationsModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+					conversationsModel = updatedModel.(ConversationsModel)
+				}
 				return conversationsModel, conversationsModel.Init()
 			} else if selectedItem.title == "👥 Contacts" {
 				contactsModel := NewContactsListModel()
+				if m.windowWidth > 0 {
+					updatedModel, _ := contactsModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+					contactsModel = updatedModel.(ContactsListModel)
+				}
 				return contactsModel, contactsModel.Init()
 			}
 		}

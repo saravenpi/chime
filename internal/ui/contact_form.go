@@ -23,6 +23,8 @@ type ContactFormModel struct {
 	focusIndex      int
 	err             error
 	saved           bool
+	windowWidth     int
+	windowHeight    int
 }
 
 // NewContactFormModel creates a form for adding or editing a contact.
@@ -80,6 +82,11 @@ func (m ContactFormModel) Init() tea.Cmd {
 
 func (m ContactFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.windowWidth = msg.Width
+		m.windowHeight = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -87,6 +94,10 @@ func (m ContactFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if msg.String() == "esc" {
 			contactsModel := NewContactsListModel()
+			if m.windowWidth > 0 {
+				updatedModel, _ := contactsModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+				contactsModel = updatedModel.(ContactsListModel)
+			}
 			return contactsModel, contactsModel.Init()
 		}
 
@@ -116,6 +127,10 @@ func (m ContactFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case contactSavedMsg:
 		if msg.success {
 			contactsModel := NewContactsListModel()
+			if m.windowWidth > 0 {
+				updatedModel, _ := contactsModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+				contactsModel = updatedModel.(ContactsListModel)
+			}
 			return contactsModel, contactsModel.Init()
 		}
 		m.err = msg.err

@@ -49,6 +49,15 @@ func OpenDatabase() (*sql.DB, error) {
 	return db, nil
 }
 
+func OpenDatabaseReadWrite() (*sql.DB, error) {
+	dbPath := GetDBPath()
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	return db, nil
+}
+
 func normalizePhoneNumber(phone string) string {
 	reg := regexp.MustCompile(`[^0-9+]`)
 	normalized := reg.ReplaceAllString(phone, "")
@@ -174,7 +183,8 @@ func GetChats() ([]models.Chat, error) {
 			COALESCE(c.display_name, ''),
 			COALESCE(m.text, ''),
 			m.attributedBody,
-			COALESCE(m.date, 0)
+			COALESCE(m.date, 0),
+			COALESCE(unread.count, 0)
 		FROM chat c
 		LEFT JOIN (
 			SELECT cmj.chat_id, cmj.message_id, m.text, m.attributedBody, m.date
@@ -186,6 +196,13 @@ func GetChats() ([]models.Chat, error) {
 				GROUP BY chat_id
 			)
 		) m ON c.ROWID = m.chat_id
+		LEFT JOIN (
+			SELECT cmj.chat_id, COUNT(*) as count
+			FROM chat_message_join cmj
+			JOIN message msg ON cmj.message_id = msg.ROWID
+			WHERE msg.is_read = 0 AND msg.is_from_me = 0
+			GROUP BY cmj.chat_id
+		) unread ON c.ROWID = unread.chat_id
 		ORDER BY m.date DESC
 	`
 
@@ -202,7 +219,7 @@ func GetChats() ([]models.Chat, error) {
 		var chat models.Chat
 		var dateNano int64
 		var attributedBody []byte
-		err := rows.Scan(&chat.ROWID, &chat.ChatID, &chat.DisplayName, &chat.LastMessage, &attributedBody, &dateNano)
+		err := rows.Scan(&chat.ROWID, &chat.ChatID, &chat.DisplayName, &chat.LastMessage, &attributedBody, &dateNano, &chat.UnreadCount)
 		if err != nil {
 			continue
 		}
@@ -212,6 +229,7 @@ func GetChats() ([]models.Chat, error) {
 		}
 
 		chat.IsGroup = strings.HasPrefix(chat.ChatID, "chat")
+		chat.HasUnread = chat.UnreadCount > 0
 
 		if dateNano > 0 {
 			chat.LastTime = time.Unix(0, dateNano+978307200000000000)
@@ -384,4 +402,31 @@ func GetMessages(chatID int64) ([]models.Message, error) {
 	}
 
 	return messages, nil
+}
+
+func MarkChatAsRead(chatID int64) error {
+	db, err := OpenDatabaseReadWrite()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	query := `
+		UPDATE message
+		SET is_read = 1
+		WHERE ROWID IN (
+			SELECT message_id
+			FROM chat_message_join
+			WHERE chat_id = ?
+		)
+		AND is_from_me = 0
+		AND is_read = 0
+	`
+
+	_, err = db.Exec(query, chatID)
+	if err != nil {
+		return fmt.Errorf("failed to mark messages as read: %w", err)
+	}
+
+	return nil
 }

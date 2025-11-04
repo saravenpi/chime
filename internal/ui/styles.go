@@ -34,8 +34,9 @@ var (
 		Foreground(lipgloss.Color("120"))
 
 	messageHeaderStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("243")).
-		Italic(true)
+		Foreground(lipgloss.Color("255")).
+		Background(lipgloss.Color("240")).
+		Padding(0, 1)
 
 	inputStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("117")).

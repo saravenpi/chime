@@ -73,6 +73,8 @@ func SaveContact(contact Contact) error {
 		return fmt.Errorf("failed to write contact file: %w", err)
 	}
 
+	InvalidateCache()
+
 	return nil
 }
 
@@ -106,6 +108,8 @@ func DeleteContact(name string) error {
 		}
 		return fmt.Errorf("failed to delete contact: %w", err)
 	}
+
+	InvalidateCache()
 
 	return nil
 }

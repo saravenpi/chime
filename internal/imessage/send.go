@@ -176,7 +176,8 @@ func SendMessage(recipient, message string) error {
 	return sendIndividualMessage(recipient, message)
 }
 
-// sendIndividualMessage sends a message to an individual contact using iMessage service.
+// sendIndividualMessage sends a message to an individual contact.
+// Tries iMessage first, then falls back to SMS if iMessage fails.
 func sendIndividualMessage(recipient, message string) error {
 	escapedMessage := escapeAppleScript(message)
 	escapedRecipient := escapeAppleScript(recipient)
@@ -192,28 +193,40 @@ func sendIndividualMessage(recipient, message string) error {
 			end try
 
 			set targetService to missing value
+			set targetBuddy to missing value
+			set messageWasSent to false
+
 			try
 				set targetService to 1st service whose service type = iMessage
-			on error
-				return "ERROR: iMessage service is not available. Make sure you're signed in to iMessage"
+				try
+					set targetBuddy to buddy "%s" of targetService
+					send "%s" to targetBuddy
+					set messageWasSent to true
+				end try
 			end try
 
-			set targetBuddy to missing value
-			try
-				set targetBuddy to buddy "%s" of targetService
-			on error
-				return "ERROR: Could not find contact. Make sure this number or email is in your contacts"
-			end try
+			if not messageWasSent then
+				try
+					repeat with svc in services
+						if service type of svc is SMS then
+							try
+								set targetBuddy to buddy "%s" of svc
+								send "%s" to targetBuddy
+								set messageWasSent to true
+								exit repeat
+							end try
+						end if
+					end repeat
+				end try
+			end if
 
-			try
-				send "%s" to targetBuddy
-			on error errMsg
-				return "ERROR: Failed to send message - " & errMsg
-			end try
+			if not messageWasSent then
+				return "ERROR: Could not send message via iMessage or SMS. Make sure the recipient is valid and SMS forwarding is enabled if messaging Android users"
+			end if
 
 			return "SUCCESS"
 		end tell
-	`, escapedRecipient, escapedMessage)
+	`, escapedRecipient, escapedMessage, escapedRecipient, escapedMessage)
 
 	cmd := exec.Command("osascript", "-e", script)
 	output, err := cmd.CombinedOutput()

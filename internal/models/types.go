@@ -11,6 +11,7 @@ type Chat struct {
 	UnreadCount  int
 	Participants []string
 	IsGroup      bool
+	HasUnread    bool
 }
 
 type Message struct {
