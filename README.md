@@ -11,13 +11,27 @@ A modern, terminal-based iMessage client for macOS built with Go and Bubble Tea.
 - 💬 **View and send iMessages** directly from your terminal
 - 👥 **Contact management** with local YAML-based storage
 - 🎨 **Beautiful TUI** powered by Bubble Tea and Lipgloss
-- 🔍 **Search** through conversations
+- 🔍 **Search and filter** through conversations
+- 📬 **Unread filter** - Toggle to view only unread messages with 'u' key
 - ⚡ **Real-time contact name resolution** with live UI updates
+- 🔄 **Auto-refresh** - Conversations update every 5 seconds
 - 🌐 **Multiple contact sources**: local contacts, macOS Contacts app, and system AddressBook
 - 📱 **Group chat support** with multiple sending strategies
 - 🔐 **Read-only database access** for safety
+- ⚡ **Quick contact add** - Add contacts directly from conversations
 
 ## Installation
+
+### Quick Install (Recommended)
+
+\`\`\`bash
+curl -fsSL https://raw.githubusercontent.com/saravenpi/chime/master/install.sh | bash
+\`\`\`
+
+This will:
+- Download and build Chime
+- Install to \`~/.local/bin/chime\`
+- Verify prerequisites (Go, macOS)
 
 ### Prerequisites
 
@@ -65,12 +79,14 @@ go build -o chime
 - \`↑↓/jk\` - Navigate conversations
 - \`Enter\` - Open conversation
 - \`/\` - Search conversations
+- \`u\` - Toggle unread filter
 - \`r\` - Refresh
 - \`Esc\` - Back to menu
 
 **Messages:**
 - \`↑↓/jk\` - Scroll messages
 - \`n\` or \`c\` - Compose new message
+- \`a\` - Add contact (for unknown numbers)
 - \`Ctrl+S\` - Send message
 - \`r\` - Refresh
 - \`Esc\` - Back to conversations
