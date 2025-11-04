@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
+	"github.com/saravenpi/chime/internal/contacts"
 	"github.com/saravenpi/chime/internal/imessage"
 	"github.com/saravenpi/chime/internal/models"
 )
@@ -37,9 +38,10 @@ type MessagesModel struct {
 	windowWidth    int
 	windowHeight   int
 	viewportReady  bool
+	showUnreadOnly bool
 }
 
-func NewMessagesModel(chat models.Chat) MessagesModel {
+func NewMessagesModel(chat models.Chat, showUnreadOnly bool) MessagesModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = statusStyle
@@ -54,14 +56,15 @@ func NewMessagesModel(chat models.Chat) MessagesModel {
 	ta.ShowLineNumbers = false
 
 	return MessagesModel{
-		chat:          chat,
-		viewport:      vp,
-		textarea:      ta,
-		loading:       true,
-		spinner:       s,
-		windowWidth:   80,
-		windowHeight:  30,
-		viewportReady: true,
+		chat:           chat,
+		viewport:       vp,
+		textarea:       ta,
+		loading:        true,
+		spinner:        s,
+		windowWidth:    80,
+		windowHeight:   30,
+		viewportReady:  true,
+		showUnreadOnly: showUnreadOnly,
 	}
 }
 
@@ -75,6 +78,10 @@ func (m MessagesModel) fetchMessagesCmd() tea.Cmd {
 		if err != nil {
 			return messagesFetchedMsg{messages: nil, err: err}
 		}
+
+		if err := imessage.MarkChatAsRead(m.chat.ROWID); err != nil {
+		}
+
 		return messagesFetchedMsg{messages: messages, err: nil}
 	}
 }
@@ -84,6 +91,20 @@ func (m MessagesModel) sendMessageCmd(message string) tea.Cmd {
 		err := imessage.SendMessageToChat(m.chat, message)
 		return messageSentMsg{err: err}
 	}
+}
+
+func (m MessagesModel) canAddContact() bool {
+	if m.chat.IsGroup {
+		return false
+	}
+
+	if len(m.chat.Participants) == 0 {
+		return false
+	}
+
+	identifier := m.chat.Participants[0]
+	existingName := contacts.FindContactByIdentifier(identifier)
+	return existingName == ""
 }
 
 func (m MessagesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -157,6 +178,12 @@ func (m MessagesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			convModel := NewConversationsModel()
+			convModel.showUnreadOnly = m.showUnreadOnly
+			if m.windowWidth > 0 {
+				updatedModel, cmd := convModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+				convModel = updatedModel.(ConversationsModel)
+				return convModel, tea.Batch(convModel.Init(), cmd)
+			}
 			return convModel, convModel.Init()
 		}
 
@@ -190,6 +217,17 @@ func (m MessagesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.composing = true
 			m.textarea.Focus()
 			return m, textarea.Blink
+
+		case "a":
+			if m.canAddContact() && len(m.chat.Participants) > 0 {
+				quickForm := NewQuickContactFormModel(m.chat, m.chat.Participants[0], m.showUnreadOnly)
+				if m.windowWidth > 0 {
+					updatedModel, _ := quickForm.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+					quickForm = updatedModel.(QuickContactFormModel)
+				}
+				return quickForm, quickForm.Init()
+			}
+			return m, nil
 
 		case "r":
 			m.loading = true
@@ -289,6 +327,9 @@ func (m MessagesModel) View() string {
 	} else {
 		scrollPercent := int(m.viewport.ScrollPercent() * 100)
 		helpText := fmt.Sprintf("↑↓/jk: scroll • n: new message • r: refresh • esc: back • q: quit • %d%%", scrollPercent)
+		if m.canAddContact() {
+			helpText = fmt.Sprintf("↑↓/jk: scroll • n: new message • a: add contact • r: refresh • esc: back • q: quit • %d%%", scrollPercent)
+		}
 		s += "\n" + helpStyle.Render(helpText)
 	}
 

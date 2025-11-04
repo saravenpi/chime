@@ -22,7 +22,12 @@ type chatsFetchedMsg struct {
 	err   error
 }
 
+type autoRefreshMsg struct{}
+
 func (i chatItem) Title() string {
+	if i.chat.HasUnread {
+		return "● " + i.chat.DisplayName
+	}
 	return i.chat.DisplayName
 }
 
@@ -31,6 +36,9 @@ func (i chatItem) Description() string {
 	preview := i.chat.LastMessage
 	if len(preview) > 50 {
 		preview = preview[:47] + "..."
+	}
+	if i.chat.HasUnread && i.chat.UnreadCount > 0 {
+		return fmt.Sprintf("%s • %d unread • %s", timeAgo, i.chat.UnreadCount, preview)
 	}
 	return fmt.Sprintf("%s • %s", timeAgo, preview)
 }
@@ -72,14 +80,16 @@ func formatTimeAgo(t time.Time) string {
 }
 
 type ConversationsModel struct {
-	chats         []models.Chat
-	list          list.Model
-	loading       bool
-	err           error
-	spinner       spinner.Model
-	windowWidth   int
-	windowHeight  int
-	selectedIndex int
+	chats          []models.Chat
+	allChats       []models.Chat
+	list           list.Model
+	loading        bool
+	err            error
+	spinner        spinner.Model
+	windowWidth    int
+	windowHeight   int
+	selectedIndex  int
+	showUnreadOnly bool
 }
 
 func NewConversationsModel() ConversationsModel {
@@ -110,13 +120,41 @@ func NewConversationsModel() ConversationsModel {
 }
 
 func (m ConversationsModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.fetchChatsCmd())
+	return tea.Batch(m.spinner.Tick, m.fetchChatsCmd(), m.autoRefreshCmd())
+}
+
+func (m ConversationsModel) autoRefreshCmd() tea.Cmd {
+	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+		return autoRefreshMsg{}
+	})
 }
 
 func (m ConversationsModel) fetchChatsCmd() tea.Cmd {
 	return func() tea.Msg {
 		chats, err := imessage.GetChats()
 		return chatsFetchedMsg{chats: chats, err: err}
+	}
+}
+
+func (m ConversationsModel) filterChats() []models.Chat {
+	if !m.showUnreadOnly {
+		return m.allChats
+	}
+
+	filtered := []models.Chat{}
+	for _, chat := range m.allChats {
+		if chat.HasUnread {
+			filtered = append(filtered, chat)
+		}
+	}
+	return filtered
+}
+
+func (m *ConversationsModel) updateTitle() {
+	if m.showUnreadOnly {
+		m.list.Title = fmt.Sprintf("Conversations - %d unread of %d total", len(m.chats), len(m.allChats))
+	} else {
+		m.list.Title = fmt.Sprintf("Conversations - %d chats", len(m.chats))
 	}
 }
 
@@ -136,14 +174,21 @@ func (m ConversationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		m.chats = msg.chats
+		m.allChats = msg.chats
+		m.chats = m.filterChats()
 		items := make([]list.Item, len(m.chats))
 		for i, chat := range m.chats {
 			items[i] = chatItem{chat: chat, index: i}
 		}
 		m.list.SetItems(items)
-		m.list.Title = fmt.Sprintf("Conversations - %d chats", len(m.chats))
+		m.updateTitle()
 		return m, nil
+
+	case autoRefreshMsg:
+		if !m.loading {
+			return m, tea.Batch(m.fetchChatsCmd(), m.autoRefreshCmd())
+		}
+		return m, m.autoRefreshCmd()
 
 	case spinner.TickMsg:
 		if m.loading {
@@ -159,19 +204,46 @@ func (m ConversationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.String() == "esc" {
+			if m.list.FilterState() == list.Filtering {
+				var cmd tea.Cmd
+				m.list, cmd = m.list.Update(msg)
+				return m, cmd
+			}
 			menuModel := NewMenuModel()
+			if m.windowWidth > 0 {
+				updatedModel, _ := menuModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+				menuModel = updatedModel.(MenuModel)
+			}
 			return menuModel, menuModel.Init()
 		}
 
-		if msg.String() == "r" && !m.loading {
-			m.loading = true
-			return m, tea.Batch(m.spinner.Tick, m.fetchChatsCmd())
-		}
+		if m.list.FilterState() != list.Filtering {
+			if msg.String() == "r" && !m.loading {
+				m.loading = true
+				return m, tea.Batch(m.spinner.Tick, m.fetchChatsCmd())
+			}
 
-		if msg.String() == "enter" && len(m.chats) > 0 && !m.loading {
-			if item, ok := m.list.SelectedItem().(chatItem); ok {
-				messagesModel := NewMessagesModel(item.chat)
-				return messagesModel, messagesModel.Init()
+			if msg.String() == "u" && !m.loading {
+				m.showUnreadOnly = !m.showUnreadOnly
+				m.chats = m.filterChats()
+				items := make([]list.Item, len(m.chats))
+				for i, chat := range m.chats {
+					items[i] = chatItem{chat: chat, index: i}
+				}
+				m.list.SetItems(items)
+				m.updateTitle()
+				return m, nil
+			}
+
+			if msg.String() == "enter" && len(m.chats) > 0 && !m.loading {
+				if item, ok := m.list.SelectedItem().(chatItem); ok {
+					messagesModel := NewMessagesModel(item.chat, m.showUnreadOnly)
+					if m.windowWidth > 0 {
+						updatedModel, _ := messagesModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+						messagesModel = updatedModel.(MessagesModel)
+					}
+					return messagesModel, messagesModel.Init()
+				}
 			}
 		}
 
@@ -204,7 +276,11 @@ func (m ConversationsModel) View() string {
 	}
 
 	s := m.list.View() + "\n"
-	s += helpStyle.Render("↑↓/jk: navigate • enter: open • /: search • r: refresh • esc: back • q: quit")
+	filterStatus := "all"
+	if m.showUnreadOnly {
+		filterStatus = "unread only"
+	}
+	s += helpStyle.Render(fmt.Sprintf("↑↓/jk: navigate • enter: open • u: toggle filter (%s) • /: search • r: refresh • esc: back • q: quit", filterStatus))
 
 	return s
 }
