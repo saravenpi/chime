@@ -30,3 +30,6 @@ go.work
 
 # Local test contacts (optional - uncomment if you don't want to commit test data)
 # .chime/
+
+# Node.js dependencies (not needed for Go project)
+node_modules/
