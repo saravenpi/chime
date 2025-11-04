@@ -12,25 +12,14 @@ import (
 	"github.com/saravenpi/chime/internal/models"
 )
 
-type chatsFetchedMsg struct {
-	chats    []models.Chat
-	err      error
-	nameChan <-chan contactNameLoadedMsg
-}
-
-type contactNameLoadedMsg struct {
-	chatID   int64
-	name     string
-	nameChan <-chan contactNameLoadedMsg
-}
-
 type chatItem struct {
 	chat  models.Chat
 	index int
 }
 
-func (i chatItem) FilterValue() string {
-	return i.chat.DisplayName + " " + i.chat.LastMessage
+type chatsFetchedMsg struct {
+	chats []models.Chat
+	err   error
 }
 
 func (i chatItem) Title() string {
@@ -44,6 +33,10 @@ func (i chatItem) Description() string {
 		preview = preview[:47] + "..."
 	}
 	return fmt.Sprintf("%s • %s", timeAgo, preview)
+}
+
+func (i chatItem) FilterValue() string {
+	return i.chat.DisplayName
 }
 
 func formatTimeAgo(t time.Time) string {
@@ -122,33 +115,8 @@ func (m ConversationsModel) Init() tea.Cmd {
 
 func (m ConversationsModel) fetchChatsCmd() tea.Cmd {
 	return func() tea.Msg {
-		nameChan := make(chan contactNameLoadedMsg, 100)
-
-		chats, err := imessage.GetChats(func(chatID int64, name string) {
-			nameChan <- contactNameLoadedMsg{chatID: chatID, name: name}
-		})
-
-		if err != nil {
-			close(nameChan)
-			return chatsFetchedMsg{chats: nil, err: err}
-		}
-
-		go func() {
-			time.Sleep(30 * time.Second)
-			close(nameChan)
-		}()
-
-		return chatsFetchedMsg{chats: chats, err: nil, nameChan: nameChan}
-	}
-}
-
-func waitForContactNames(nameChan <-chan contactNameLoadedMsg) tea.Cmd {
-	return func() tea.Msg {
-		if partialMsg, ok := <-nameChan; ok {
-			partialMsg.nameChan = nameChan
-			return partialMsg
-		}
-		return nil
+		chats, err := imessage.GetChats()
+		return chatsFetchedMsg{chats: chats, err: err}
 	}
 }
 
@@ -175,30 +143,7 @@ func (m ConversationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.list.SetItems(items)
 		m.list.Title = fmt.Sprintf("Conversations - %d chats", len(m.chats))
-
-		if msg.nameChan != nil {
-			return m, waitForContactNames(msg.nameChan)
-		}
 		return m, nil
-
-	case contactNameLoadedMsg:
-		if msg.chatID == 0 {
-			return m, nil
-		}
-
-		for i, chat := range m.chats {
-			if chat.ROWID == msg.chatID {
-				m.chats[i].DisplayName = msg.name
-				items := make([]list.Item, len(m.chats))
-				for j, c := range m.chats {
-					items[j] = chatItem{chat: c, index: j}
-				}
-				m.list.SetItems(items)
-				break
-			}
-		}
-
-		return m, waitForContactNames(msg.nameChan)
 
 	case spinner.TickMsg:
 		if m.loading {
@@ -209,11 +154,11 @@ func (m ConversationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		if msg.String() == "q" || msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
 
-		if msg.String() == "esc" || msg.String() == "q" {
+		if msg.String() == "esc" {
 			menuModel := NewMenuModel()
 			return menuModel, menuModel.Init()
 		}

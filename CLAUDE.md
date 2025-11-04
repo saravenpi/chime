@@ -4,22 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Pirouette is a terminal-based iMessage client for macOS built with Go and Bubble Tea. It reads from the iMessage SQLite database and uses AppleScript to send messages through Messages.app.
+chime is a terminal-based iMessage client for macOS built with Go and Bubble Tea. It reads from the iMessage SQLite database and uses AppleScript to send messages through Messages.app.
 
 ## Build and Run
 
 ```bash
 # Build the application
-go build -o pirouette
+go build -o chime
 
 # Run directly
-./pirouette
+./chime
 
 # Run with go
 go run main.go
 
 # Install to PATH
-go install github.com/saravenpi/pirouette@latest
+go install github.com/saravenpi/chime@latest
 ```
 
 ## Architecture

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -14,6 +16,14 @@ type Contact struct {
 	PhoneNumbers []string `yaml:"phone_numbers,omitempty"`
 	Emails       []string `yaml:"emails,omitempty"`
 }
+
+var (
+	contactCache      []Contact
+	contactLookupMap  map[string]string
+	contactCacheMutex sync.RWMutex
+	contactCacheTime  time.Time
+	cacheDuration     = 30 * time.Second
+)
 
 // GetContactsDir returns the path to the contacts directory (~/.chime/contacts).
 func GetContactsDir() string {
@@ -101,7 +111,22 @@ func DeleteContact(name string) error {
 }
 
 // ListContacts returns all contacts from the contacts directory.
+// Results are cached for 30 seconds to improve performance.
 func ListContacts() ([]Contact, error) {
+	contactCacheMutex.RLock()
+	if time.Since(contactCacheTime) < cacheDuration && contactCache != nil {
+		defer contactCacheMutex.RUnlock()
+		return contactCache, nil
+	}
+	contactCacheMutex.RUnlock()
+
+	contactCacheMutex.Lock()
+	defer contactCacheMutex.Unlock()
+
+	if time.Since(contactCacheTime) < cacheDuration && contactCache != nil {
+		return contactCache, nil
+	}
+
 	dir := GetContactsDir()
 
 	if err := ensureContactsDir(); err != nil {
@@ -114,6 +139,8 @@ func ListContacts() ([]Contact, error) {
 	}
 
 	var contacts []Contact
+	lookupMap := make(map[string]string)
+
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yml") {
 			continue
@@ -131,34 +158,53 @@ func ListContacts() ([]Contact, error) {
 		}
 
 		contacts = append(contacts, contact)
+
+		for _, phone := range contact.PhoneNumbers {
+			normalized := normalizeIdentifier(phone)
+			lookupMap[normalized] = contact.Name
+		}
+
+		for _, email := range contact.Emails {
+			normalized := strings.ToLower(strings.TrimSpace(email))
+			lookupMap[normalized] = contact.Name
+		}
 	}
+
+	contactCache = contacts
+	contactLookupMap = lookupMap
+	contactCacheTime = time.Now()
 
 	return contacts, nil
 }
 
+// InvalidateCache forces the contact cache to be refreshed on next access.
+func InvalidateCache() {
+	contactCacheMutex.Lock()
+	defer contactCacheMutex.Unlock()
+	contactCacheTime = time.Time{}
+}
+
 // FindContactByIdentifier searches for a contact by phone number or email.
 // Returns the contact name if found, empty string otherwise.
+// Uses an optimized lookup map for O(1) performance.
 func FindContactByIdentifier(identifier string) string {
-	contacts, err := ListContacts()
+	if identifier == "" {
+		return ""
+	}
+
+	_, err := ListContacts()
 	if err != nil {
 		return ""
 	}
 
+	contactCacheMutex.RLock()
+	defer contactCacheMutex.RUnlock()
+
 	identifier = strings.TrimSpace(identifier)
 	normalizedIdentifier := normalizeIdentifier(identifier)
 
-	for _, contact := range contacts {
-		for _, phone := range contact.PhoneNumbers {
-			if normalizeIdentifier(phone) == normalizedIdentifier {
-				return contact.Name
-			}
-		}
-
-		for _, email := range contact.Emails {
-			if strings.EqualFold(email, identifier) {
-				return contact.Name
-			}
-		}
+	if name, ok := contactLookupMap[normalizedIdentifier]; ok {
+		return name
 	}
 
 	return ""

@@ -131,7 +131,6 @@ func (m MessagesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea.Reset()
 		m.composing = false
 		m.loading = true
-		// Add a small delay before fetching to allow Messages.app to write to database
 		return m, tea.Batch(m.spinner.Tick, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
 			return m.fetchMessagesCmd()()
 		}))

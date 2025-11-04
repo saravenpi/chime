@@ -61,121 +61,14 @@ func normalizePhoneNumber(phone string) string {
 	return normalized
 }
 
-// getLocalContactName looks up a contact in ~/.chime/contacts/.
-func getLocalContactName(identifier string) string {
-	return contacts.FindContactByIdentifier(identifier)
-}
-
-// GetContactName retrieves a contact name for the given identifier (phone/email).
-// First checks local ~/.chime contacts, then falls back to AppleScript and system contacts.
+// GetContactName retrieves a contact name from ~/.chime/contacts/.
+// Returns empty string if not found.
 func GetContactName(identifier string) string {
 	if identifier == "" {
 		return ""
 	}
 
-	localName := getLocalContactName(identifier)
-	if localName != "" {
-		return localName
-	}
-
-	name := GetContactNameViaAppleScript(identifier)
-	if name != "" {
-		return name
-	}
-
-	contactsDBPath := GetContactsDBPath()
-	if _, err := os.Stat(contactsDBPath); os.IsNotExist(err) {
-		return ""
-	}
-
-	db, err := sql.Open("sqlite3", contactsDBPath+"?mode=ro")
-	if err != nil {
-		return ""
-	}
-	defer db.Close()
-
-	normalizedID := normalizePhoneNumber(identifier)
-
-	phoneQuery := `
-		SELECT DISTINCT ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME, ZABCDPHONENUMBER.ZFULLNUMBER
-		FROM ZABCDRECORD
-		LEFT JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
-		WHERE ZABCDPHONENUMBER.ZFULLNUMBER IS NOT NULL
-	`
-
-	rows, err := db.Query(phoneQuery)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var firstName, lastName sql.NullString
-			var phoneNumber string
-			if err := rows.Scan(&firstName, &lastName, &phoneNumber); err != nil {
-				continue
-			}
-
-			normalizedPhone := normalizePhoneNumber(phoneNumber)
-			if normalizedPhone == normalizedID || strings.Contains(normalizedPhone, normalizedID) || strings.Contains(normalizedID, normalizedPhone) {
-				name := strings.TrimSpace(firstName.String + " " + lastName.String)
-				if name != "" {
-					return name
-				}
-			}
-		}
-	}
-
-	emailQuery := `
-		SELECT DISTINCT ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME, ZABCDEMAILADDRESS.ZADDRESS
-		FROM ZABCDRECORD
-		LEFT JOIN ZABCDEMAILADDRESS ON ZABCDRECORD.Z_PK = ZABCDEMAILADDRESS.ZOWNER
-		WHERE ZABCDEMAILADDRESS.ZADDRESS IS NOT NULL
-	`
-
-	rows2, err := db.Query(emailQuery)
-	if err == nil {
-		defer rows2.Close()
-		for rows2.Next() {
-			var firstName, lastName sql.NullString
-			var email string
-			if err := rows2.Scan(&firstName, &lastName, &email); err != nil {
-				continue
-			}
-
-			if strings.EqualFold(email, identifier) {
-				name := strings.TrimSpace(firstName.String + " " + lastName.String)
-				if name != "" {
-					return name
-				}
-			}
-		}
-	}
-
-	messagingQuery := `
-		SELECT DISTINCT ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME, ZABCDMESSAGINGADDRESS.ZADDRESS
-		FROM ZABCDRECORD
-		LEFT JOIN ZABCDMESSAGINGADDRESS ON ZABCDRECORD.Z_PK = ZABCDMESSAGINGADDRESS.ZOWNER
-		WHERE ZABCDMESSAGINGADDRESS.ZADDRESS IS NOT NULL
-	`
-
-	rows3, err := db.Query(messagingQuery)
-	if err == nil {
-		defer rows3.Close()
-		for rows3.Next() {
-			var firstName, lastName sql.NullString
-			var address string
-			if err := rows3.Scan(&firstName, &lastName, &address); err != nil {
-				continue
-			}
-
-			if strings.EqualFold(address, identifier) {
-				name := strings.TrimSpace(firstName.String + " " + lastName.String)
-				if name != "" {
-					return name
-				}
-			}
-		}
-	}
-
-	return ""
+	return contacts.FindContactByIdentifier(identifier)
 }
 
 func extractTextFromAttributedBody(data []byte) string {
@@ -267,7 +160,7 @@ func indexOf(data []byte, pattern []byte) int {
 	return -1
 }
 
-func GetChats(onContactLoaded func(int64, string)) ([]models.Chat, error) {
+func GetChats() ([]models.Chat, error) {
 	db, err := OpenDatabase()
 	if err != nil {
 		return nil, err
@@ -283,13 +176,16 @@ func GetChats(onContactLoaded func(int64, string)) ([]models.Chat, error) {
 			m.attributedBody,
 			COALESCE(m.date, 0)
 		FROM chat c
-		LEFT JOIN chat_message_join cmj ON c.ROWID = cmj.chat_id
-		LEFT JOIN message m ON cmj.message_id = m.ROWID
-		WHERE m.ROWID IN (
-			SELECT MAX(message_id)
-			FROM chat_message_join
-			WHERE chat_id = c.ROWID
-		) OR m.ROWID IS NULL
+		LEFT JOIN (
+			SELECT cmj.chat_id, cmj.message_id, m.text, m.attributedBody, m.date
+			FROM chat_message_join cmj
+			JOIN message m ON cmj.message_id = m.ROWID
+			WHERE cmj.message_id IN (
+				SELECT MAX(message_id)
+				FROM chat_message_join
+				GROUP BY chat_id
+			)
+		) m ON c.ROWID = m.chat_id
 		ORDER BY m.date DESC
 	`
 
@@ -300,6 +196,8 @@ func GetChats(onContactLoaded func(int64, string)) ([]models.Chat, error) {
 	defer rows.Close()
 
 	var chats []models.Chat
+	var chatIDs []int64
+
 	for rows.Next() {
 		var chat models.Chat
 		var dateNano int64
@@ -315,9 +213,24 @@ func GetChats(onContactLoaded func(int64, string)) ([]models.Chat, error) {
 
 		chat.IsGroup = strings.HasPrefix(chat.ChatID, "chat")
 
+		if dateNano > 0 {
+			chat.LastTime = time.Unix(0, dateNano+978307200000000000)
+		}
+
+		chats = append(chats, chat)
+		chatIDs = append(chatIDs, chat.ROWID)
+	}
+
+	participantsMap, err := GetAllChatParticipants(db, chatIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query participants: %w", err)
+	}
+
+	for i := range chats {
+		chat := &chats[i]
+
 		if chat.IsGroup {
-			participants, err := GetChatParticipants(db, chat.ROWID)
-			if err == nil {
+			if participants, ok := participantsMap[chat.ROWID]; ok {
 				chat.Participants = participants
 				if chat.DisplayName == "" && len(participants) > 0 {
 					participantNames := make([]string, 0, len(participants))
@@ -327,11 +240,6 @@ func GetChats(onContactLoaded func(int64, string)) ([]models.Chat, error) {
 							participantNames = append(participantNames, name)
 						} else {
 							participantNames = append(participantNames, p)
-							if onContactLoaded != nil {
-								LoadContactForIdentifier(p, func(identifier, contactName string) {
-									onContactLoaded(chat.ROWID, contactName)
-								})
-							}
 						}
 					}
 					chat.DisplayName = strings.Join(participantNames, ", ")
@@ -347,22 +255,44 @@ func GetChats(onContactLoaded func(int64, string)) ([]models.Chat, error) {
 				chat.DisplayName = contactName
 			} else {
 				chat.DisplayName = chat.ChatID
-				if onContactLoaded != nil {
-					LoadContactForIdentifier(chat.ChatID, func(identifier, name string) {
-						onContactLoaded(chat.ROWID, name)
-					})
-				}
 			}
 		}
-
-		if dateNano > 0 {
-			chat.LastTime = time.Unix(0, dateNano+978307200000000000)
-		}
-
-		chats = append(chats, chat)
 	}
 
 	return chats, nil
+}
+
+// GetAllChatParticipants fetches participants for multiple chats in a single query.
+// Returns a map of chatID -> []participants for efficient lookup.
+func GetAllChatParticipants(db *sql.DB, chatIDs []int64) (map[int64][]string, error) {
+	if len(chatIDs) == 0 {
+		return make(map[int64][]string), nil
+	}
+
+	query := `
+		SELECT chj.chat_id, h.id
+		FROM chat_handle_join chj
+		JOIN handle h ON chj.handle_id = h.ROWID
+		ORDER BY chj.chat_id, h.id
+	`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query participants: %w", err)
+	}
+	defer rows.Close()
+
+	participantsMap := make(map[int64][]string)
+	for rows.Next() {
+		var chatID int64
+		var participant string
+		if err := rows.Scan(&chatID, &participant); err != nil {
+			continue
+		}
+		participantsMap[chatID] = append(participantsMap[chatID], participant)
+	}
+
+	return participantsMap, nil
 }
 
 func GetChatParticipants(db *sql.DB, chatID int64) ([]string, error) {
