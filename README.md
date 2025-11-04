@@ -24,13 +24,13 @@ A modern, terminal-based iMessage client for macOS built with Go and Bubble Tea.
 
 ### Quick Install (Recommended)
 
-\`\`\`bash
+```bash
 curl -fsSL https://raw.githubusercontent.com/saravenpi/chime/master/install.sh | bash
-\`\`\`
+```
 
 This will:
 - Download and build Chime
-- Install to \`~/.local/bin/chime\`
+- Install to `~/.local/bin/chime`
 - Verify prerequisites (Go, macOS)
 
 ### Prerequisites
@@ -42,12 +42,12 @@ This will:
 
 ### Build from source
 
-\`\`\`bash
+```bash
 git clone https://github.com/saravenpi/chime.git
 cd chime
 go build -o chime
 ./chime
-\`\`\`
+```
 
 ### Grant Full Disk Access
 
@@ -57,7 +57,7 @@ go build -o chime
 
 ## Usage
 
-\`\`\`bash
+```bash
 # Start Chime
 ./chime
 
@@ -66,68 +66,68 @@ go build -o chime
 
 # Show version
 ./chime version
-\`\`\`
+```
 
 ### Navigation
 
 **Main Menu:**
-- \`↑↓/jk\` - Navigate between Conversations and Contacts
-- \`Enter\` - Select option
-- \`q\` - Quit
+- `↑↓/jk` - Navigate between Conversations and Contacts
+- `Enter` - Select option
+- `q` - Quit
 
 **Conversations:**
-- \`↑↓/jk\` - Navigate conversations
-- \`Enter\` - Open conversation
-- \`/\` - Search conversations
-- \`u\` - Toggle unread filter
-- \`r\` - Refresh
-- \`Esc\` - Back to menu
+- `↑↓/jk` - Navigate conversations
+- `Enter` - Open conversation
+- `/` - Search conversations
+- `u` - Toggle unread filter
+- `r` - Refresh
+- `Esc` - Back to menu
 
 **Messages:**
-- \`↑↓/jk\` - Scroll messages
-- \`n\` or \`c\` - Compose new message
-- \`a\` - Add contact (for unknown numbers)
-- \`Ctrl+S\` - Send message
-- \`r\` - Refresh
-- \`Esc\` - Back to conversations
+- `↑↓/jk` - Scroll messages
+- `n` or `c` - Compose new message
+- `a` - Add contact (for unknown numbers)
+- `Ctrl+S` - Send message
+- `r` - Refresh
+- `Esc` - Back to conversations
 
 **Contacts:**
-- \`↑↓/jk\` - Navigate contacts
-- \`n\` or \`a\` - Add new contact
-- \`Enter\` - Edit contact
-- \`d\` - Delete contact
-- \`/\` - Search contacts
-- \`Esc\` - Back to menu
+- `↑↓/jk` - Navigate contacts
+- `n` or `a` - Add new contact
+- `Enter` - Edit contact
+- `d` - Delete contact
+- `/` - Search contacts
+- `Esc` - Back to menu
 
 **Contact Form:**
-- \`Tab/↑↓\` - Navigate fields
-- \`Ctrl+S\` - Save contact
-- \`Esc\` - Cancel
+- `Tab/↑↓` - Navigate fields
+- `Ctrl+S` - Save contact
+- `Esc` - Cancel
 
 ## Contact Storage
 
-Contacts are stored locally in \`~/.chime/contacts/\` as YAML files. Each contact has:
+Contacts are stored locally in `~/.chime/contacts/` as YAML files. Each contact has:
 
 - **Name** (required)
 - **Phone Numbers** (up to 3)
 - **Email Addresses** (up to 3)
 
-Example contact file (\`~/.chime/contacts/John Doe.yml\`):
+Example contact file (`~/.chime/contacts/John Doe.yml`):
 
-\`\`\`yaml
+```yaml
 name: John Doe
 phone_numbers:
   - +1234567890
   - +0987654321
 emails:
   - john@example.com
-\`\`\`
+```
 
 ### Contact Resolution Priority
 
 Chime uses a multi-tiered approach to resolve contact names:
 
-1. **Local contacts** (\`~/.chime/contacts/\`) - Fastest
+1. **Local contacts** (`~/.chime/contacts/`) - Fastest
 2. **macOS Contacts app** (via AppleScript) - Cached for performance
 3. **System AddressBook database** - Fallback
 
@@ -135,23 +135,23 @@ Chime uses a multi-tiered approach to resolve contact names:
 
 ### Three-Layer Design
 
-1. **Models Layer** (\`internal/models/\`)
+1. **Models Layer** (`internal/models/`)
    - Data structures for chats, messages, and contacts
 
-2. **Data Layer** (\`internal/imessage/\`, \`internal/contacts/\`)
+2. **Data Layer** (`internal/imessage/`, `internal/contacts/`)
    - Read-only SQLite access to iMessage database
    - AppleScript integration for sending messages
    - YAML-based contact storage and retrieval
 
-3. **UI Layer** (\`internal/ui/\`)
+3. **UI Layer** (`internal/ui/`)
    - Bubble Tea components for interactive TUI
    - Menu, conversations, messages, contacts, and forms
 
 ### Key Technical Details
 
-- **Database**: Read-only access to \`~/Library/Messages/chat.db\`
+- **Database**: Read-only access to `~/Library/Messages/chat.db`
 - **Message Sending**: AppleScript integration with Messages.app
-- **Contact Caching**: Thread-safe in-memory cache with \`sync.RWMutex\`
+- **Contact Caching**: Thread-safe in-memory cache with `sync.RWMutex`
 - **Async Operations**: Contact lookups run in background goroutines
 - **Live Updates**: UI refreshes as contact names are resolved
 
@@ -159,7 +159,7 @@ Chime uses a multi-tiered approach to resolve contact names:
 
 ### Reading Messages
 
-Chime reads from your iMessage SQLite database at \`~/Library/Messages/chat.db\`. All database access is read-only to ensure safety.
+Chime reads from your iMessage SQLite database at `~/Library/Messages/chat.db`. All database access is read-only to ensure safety.
 
 ### Sending Messages
 
@@ -171,7 +171,7 @@ Messages are sent via AppleScript commands to Messages.app. For group chats, Chi
 ### Contact Name Resolution
 
 When displaying a phone number or email:
-1. Check local \`~/.chime/contacts/\` first (instant)
+1. Check local `~/.chime/contacts/` first (instant)
 2. Query macOS Contacts app via AppleScript (cached)
 3. Fall back to system AddressBook database
 
@@ -181,7 +181,7 @@ Names load asynchronously and update the UI live as they're found.
 
 ### Project Structure
 
-\`\`\`
+```
 chime/
 ├── main.go                    # Entry point
 ├── internal/
@@ -201,7 +201,7 @@ chime/
 │       └── styles.go          # Lipgloss styles
 ├── go.mod
 └── README.md
-\`\`\`
+```
 
 ### Dependencies
 
