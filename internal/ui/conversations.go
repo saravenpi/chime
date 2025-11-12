@@ -235,6 +235,15 @@ func (m ConversationsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
+			if msg.String() == "n" && !m.loading {
+				newConvModel := NewNewConversationModel(m.showUnreadOnly)
+				if m.windowWidth > 0 {
+					updatedModel, _ := newConvModel.Update(tea.WindowSizeMsg{Width: m.windowWidth, Height: m.windowHeight})
+					newConvModel = updatedModel.(NewConversationModel)
+				}
+				return newConvModel, newConvModel.Init()
+			}
+
 			if msg.String() == "enter" && len(m.chats) > 0 && !m.loading {
 				if item, ok := m.list.SelectedItem().(chatItem); ok {
 					messagesModel := NewMessagesModel(item.chat, m.showUnreadOnly)
@@ -280,7 +289,7 @@ func (m ConversationsModel) View() string {
 	if m.showUnreadOnly {
 		filterStatus = "unread only"
 	}
-	s += helpStyle.Render(fmt.Sprintf("↑↓/jk: navigate • enter: open • u: toggle filter (%s) • /: search • r: refresh • esc: back • q: quit", filterStatus))
+	s += helpStyle.Render(fmt.Sprintf("↑↓/jk: navigate • enter: open • n: new • u: toggle filter (%s) • /: search • r: refresh • esc: back • q: quit", filterStatus))
 
 	return s
 }
