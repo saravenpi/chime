@@ -10,8 +10,6 @@ A modern, terminal-based iMessage client for macOS built with Go and Bubble Tea.
 
 - 💬 **View and send iMessages** directly from your terminal
 - 👥 **Contact management** with local YAML-based storage
-- 🌐 **IRC Client** - Connect to IRC servers, join channels, and chat in real-time
-- 🖥️ **IRC Server** - Host your own IRC server that others can connect to
 - 🎨 **Beautiful TUI** powered by Bubble Tea and Lipgloss
 - 🔍 **Search and filter** through conversations
 - 📬 **Unread filter** - Toggle to view only unread messages with 'u' key
@@ -61,11 +59,8 @@ go build -o chime
 ## Usage
 
 ```bash
-# Start Chime TUI (iMessage client)
+# Start Chime
 ./chime
-
-# Start IRC server mode
-./chime server
 
 # Show help
 ./chime help
@@ -77,7 +72,7 @@ go build -o chime
 ### Navigation
 
 **Main Menu:**
-- `↑↓/jk` - Navigate between Conversations, Contacts, and IRC
+- `↑↓/jk` - Navigate between Conversations and Contacts
 - `Enter` - Select option
 - `q` - Quit
 
@@ -111,31 +106,6 @@ go build -o chime
 - `Ctrl+S` - Save contact
 - `Esc` - Cancel
 
-**IRC Servers:**
-- `↑↓/jk` - Navigate servers
-- `Enter` - View channels (if connected)
-- `a` or `n` - Add new server
-- `c` - Connect to server
-- `x` - Disconnect from server
-- `d` - Delete server
-- `/` - Search servers
-- `Esc` - Back to menu
-
-**IRC Channels:**
-- `↑↓/jk` - Navigate channels
-- `Enter` - Open chat
-- `j` - Join new channel
-- `p` - Part from channel
-- `r` - Refresh channel list
-- `Esc` - Back to servers
-
-**IRC Chat:**
-- `↑↓/jk` - Scroll messages
-- `Enter` - Focus input field
-- `Ctrl+S` - Send message
-- `r` - Refresh messages
-- `Esc` - Back to channels (or unfocus input)
-
 ## Contact Storage
 
 Contacts are stored locally in `~/.chime/contacts/` as YAML files. Each contact has:
@@ -163,120 +133,21 @@ Chime uses a multi-tiered approach to resolve contact names:
 2. **macOS Contacts app** (via AppleScript) - Cached for performance
 3. **System AddressBook database** - Fallback
 
-## IRC Support
-
-Chime now includes full IRC (Internet Relay Chat) support, allowing you to connect to IRC servers and participate in chat rooms alongside your iMessage conversations.
-
-### IRC Server Configuration
-
-IRC server configurations are stored in `~/.chime/irc/servers.json`. You can add servers through the UI:
-
-1. Select **🌐 IRC** from the main menu
-2. Press `a` or `n` to add a new server
-3. Fill in the server details:
-   - **Server Name**: A friendly name (e.g., "Libera Chat")
-   - **Host**: Server address (e.g., `irc.libera.chat`)
-   - **Port**: Usually 6667 (plain) or 6697 (SSL)
-   - **SSL**: Enter `yes` for encrypted connections
-   - **Nickname**: Your IRC nickname
-   - **Password**: Server password (optional, leave empty if not needed)
-
-### Using IRC
-
-**Connect to a Server:**
-1. Navigate to the IRC Servers list
-2. Select a server
-3. Press `c` to connect
-
-**Join a Channel:**
-1. Once connected, press `Enter` on the server
-2. Press `j` to join a new channel
-3. Enter the channel name (e.g., `#golang` or just `golang`)
-
-**Chat in a Channel:**
-1. Select a channel and press `Enter`
-2. Press `Enter` again to focus the input field
-3. Type your message and press `Ctrl+S` to send
-4. Press `Esc` to unfocus the input or go back
-
-**Popular IRC Networks:**
-- **Libera Chat** (`irc.libera.chat:6697` SSL) - Open source projects
-- **OFTC** (`irc.oftc.net:6697` SSL) - Community projects
-- **EFnet** (`irc.efnet.org:6667`) - One of the original IRC networks
-
-## IRC Server Mode
-
-Chime can also run as a standalone IRC server that others can connect to using any standard IRC client.
-
-### Starting the Server
-
-```bash
-./chime server
-```
-
-On first run, this creates a default configuration file at `~/.chime.yml` with these settings:
-
-```yaml
-server:
-  port: 6667
-  host: 0.0.0.0
-  name: chime.local
-  description: Chime IRC Server
-  motd: Welcome to Chime IRC Server!
-```
-
-### Configuration Options
-
-Edit `~/.chime.yml` to customize your server:
-
-- **port**: The port to listen on (default: 6667, SSL typically uses 6697)
-- **host**: Bind address (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)
-- **name**: Your server's hostname (used in messages)
-- **description**: Server description shown to clients
-- **motd**: Message of the Day displayed when users connect
-
-### Connecting to Your Server
-
-Users can connect with any IRC client:
-
-```bash
-# Using irssi
-irssi -c localhost -p 6667
-
-# Using weechat
-/connect localhost/6667
-
-# Using the chime client itself
-# Add server: localhost:6667 (no SSL for local testing)
-```
-
-### Server Features
-
-- **Multi-user support**: Multiple clients can connect simultaneously
-- **Channel management**: Create and join channels (e.g., #general, #random)
-- **Private messages**: Send direct messages between users
-- **Standard IRC commands**: NICK, JOIN, PART, PRIVMSG, QUIT, TOPIC, WHO, MODE, NAMES
-- **Thread-safe**: Concurrent connection handling with proper synchronization
-
 ## Architecture
 
 ### Three-Layer Design
 
 1. **Models Layer** (`internal/models/`)
-   - Data structures for chats, messages, contacts, and IRC entities
+   - Data structures for chats, messages, and contacts
 
-2. **Data Layer** (`internal/imessage/`, `internal/contacts/`, `internal/irc/`, `internal/ircserver/`, `internal/config/`)
+2. **Data Layer** (`internal/imessage/`, `internal/contacts/`)
    - Read-only SQLite access to iMessage database
    - AppleScript integration for sending messages
    - YAML-based contact storage and retrieval
-   - IRC client connection management and message handling
-   - IRC server implementation with channel and user management
-   - JSON-based IRC client server configuration storage
-   - YAML-based server configuration (`~/.chime.yml`)
 
 3. **UI Layer** (`internal/ui/`)
    - Bubble Tea components for interactive TUI
-   - Menu, conversations, messages, contacts, IRC servers, channels, and chat views
+   - Menu, conversations, messages, contacts, and forms
 
 ### Key Technical Details
 
@@ -314,20 +185,13 @@ Names load asynchronously and update the UI live as they're found.
 
 ```
 chime/
-├── main.go                    # Entry point & server mode
+├── main.go                    # Entry point
 ├── internal/
 │   ├── contacts/              # Contact storage & retrieval
 │   │   └── contacts.go
 │   ├── imessage/              # iMessage integration
 │   │   ├── database.go        # Read messages from SQLite
 │   │   └── send.go            # Send via AppleScript
-│   ├── irc/                   # IRC client integration
-│   │   ├── manager.go         # Connection & message handling
-│   │   └── storage.go         # Server configuration storage
-│   ├── ircserver/             # IRC server implementation
-│   │   └── server.go          # Server, channels, user management
-│   ├── config/                # Configuration management
-│   │   └── config.go          # YAML config for server mode
 │   ├── models/                # Data models
 │   │   └── types.go
 │   └── ui/                    # Bubble Tea UI components
@@ -336,9 +200,7 @@ chime/
 │       ├── messages.go        # Message thread
 │       ├── contacts_list.go   # Contact list
 │       ├── contact_form.go    # Add/edit contact form
-│       ├── irc_servers.go     # IRC server list
-│       ├── irc_channels.go    # IRC channel list
-│       ├── irc_chat.go        # IRC chat view
+│       ├── new_conversation.go # New conversation form
 │       └── styles.go          # Lipgloss styles
 ├── go.mod
 └── README.md
@@ -350,9 +212,8 @@ chime/
 - [Bubbles](https://github.com/charmbracelet/bubbles) - TUI components
 - [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
 - [go-sqlite3](https://github.com/mattn/go-sqlite3) - SQLite driver
-- [girc](https://github.com/lrstanley/girc) - IRC client library
-- [irc-go](https://github.com/ergochat/irc-go) - IRC protocol library for server
 - [yaml.v3](https://gopkg.in/yaml.v3) - YAML parsing
+- [reflow](https://github.com/muesli/reflow) - Text wrapping utilities
 
 ## Limitations
 
